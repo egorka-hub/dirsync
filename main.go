@@ -8,7 +8,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 )
+
+type FileHash struct {
+	Path string
+	Hash string
+}
 
 func ListFiles(rootPath string) ([]string, error) {
 	var files []string
@@ -66,13 +72,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, file := range files {
-		hashFile, err := HashFile(filepath.Join(rootPath, file))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
+	tasks := make(chan string)
+	results := make(chan FileHash)
 
-		fmt.Printf("%s: %s\n", file, hashFile)
+	go func() {
+		for _, file := range files {
+			tasks <- file
+		}
+		close(tasks)
+	}()
+
+	var wg sync.WaitGroup
+
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range tasks {
+				hashFile, err := HashFile(filepath.Join(rootPath, path))
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					continue
+				}
+				results <- FileHash{
+					Path: path,
+					Hash: hashFile,
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for r := range results {
+		fmt.Printf("%s: %s\n", r.Path, r.Hash)
 	}
 }
