@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -32,6 +35,23 @@ func ListFiles(rootPath string) ([]string, error) {
 	return files, err
 }
 
+func HashFile(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return "", err
+	}
+	result := hasher.Sum(nil)
+	hexString := hex.EncodeToString(result)
+
+	return hexString, nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: dirsync <directory>")
@@ -47,6 +67,12 @@ func main() {
 	}
 
 	for _, file := range files {
-		fmt.Println(file)
+		hashFile, err := HashFile(filepath.Join(rootPath, file))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("%s: %s\n", file, hashFile)
 	}
 }
