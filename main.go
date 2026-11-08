@@ -133,6 +133,38 @@ func ScanDir(rootPath string) (map[string]string, error) {
 	return hashes, nil
 }
 
+func CopyFile(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer src.Close()
+
+	err = os.MkdirAll(filepath.Dir(dstPath), 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	return nil
+}
+
+func DeleteFile(path string) error {
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("delete file %q: %w", path, err)
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "usage: dirsync <source> <dest>")
@@ -171,20 +203,43 @@ func main() {
 
 	toCopy, toUpdate, toDelete := CompareScans(sourceHashes, destHashes)
 
-	fmt.Println("Файлы для КОПИРОВАНИЯ:")
+	var copied, updated, deleted int
+
 	for _, file := range toCopy {
-		fmt.Println("-", file)
+		fmt.Printf("[INFO] Копирую %s...\n", file)
+		srcPath := filepath.Join(sourcePath, file)
+		dstPath := filepath.Join(destPath, file)
+		if err := CopyFile(srcPath, dstPath); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] copy file %q: %v\n", file, err)
+			continue
+		}
+		copied++
 	}
-	fmt.Println()
 
-	fmt.Println("Файлы для ОБНОВЛЕНИЯ:")
 	for _, file := range toUpdate {
-		fmt.Println("-", file)
+		fmt.Printf("[INFO] Обновляю %s...\n", file)
+		srcPath := filepath.Join(sourcePath, file)
+		dstPath := filepath.Join(destPath, file)
+		if err := CopyFile(srcPath, dstPath); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] update file %q: %v\n", file, err)
+			continue
+		}
+		updated++
 	}
-	fmt.Println()
 
-	fmt.Println("Файлы для УДАЛЕНИЯ:")
 	for _, file := range toDelete {
-		fmt.Println("-", file)
+		fmt.Printf("[INFO] Удаляю %s...\n", file)
+		path := filepath.Join(destPath, file)
+		if err := DeleteFile(path); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+			continue
+		}
+		deleted++
 	}
+
+	fmt.Println()
+	fmt.Println("Синхронизация завершена!")
+	fmt.Printf("Скопировано: %d\n", copied)
+	fmt.Printf("Обновлено: %d\n", updated)
+	fmt.Printf("Удалено: %d\n", deleted)
 }
