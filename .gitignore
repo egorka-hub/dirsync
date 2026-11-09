@@ -1,4 +1,7 @@
+# Бинарные файлы
 /dirsync
+/sync-dirs
+/directory-synchronizer
 /bin/
 *.exe
 *.exe~
@@ -6,6 +9,7 @@
 *.so
 *.dylib
 
+# Тесты и профилирование
 *.test
 *.out
 coverage.*
@@ -13,17 +17,29 @@ coverage.*
 *.prof
 *.pprof
 
+# Go workspace
 go.work
 go.work.sum
 
 /dist/
 
+# Переменные окружения
 .env
 .env.*
 
-/test-data/
+# Временные файлы
+*.tmp
+*.log
 /tmp/
 
+# Тестовые директории
+/test-data/
+/test/
+/source/
+/dest/
+/backup/
+
+# IDE и редакторы
 .idea/
 .vscode/
 *.swp
