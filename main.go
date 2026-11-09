@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/fatih/color"
+	"github.com/schollz/progressbar/v3"
 )
 
 type FileHash struct {
@@ -178,17 +181,13 @@ func main() {
 	var sourceErr, destErr error
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		sourceHashes, sourceErr = ScanDir(sourcePath)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		destHashes, destErr = ScanDir(destPath)
-	}()
+	})
 
 	wg.Wait()
 
@@ -205,36 +204,61 @@ func main() {
 
 	var copied, updated, deleted int
 
+	total := len(toCopy) + len(toUpdate) + len(toDelete)
+	if total == 0 {
+		fmt.Println("Директории уже синхронизированы, делать нечего.")
+		return
+	}
+
+	fmt.Println("Синхронизация...")
+	bar := progressbar.Default(int64(total))
+	green := color.New(color.FgGreen)
+	yellow := color.New(color.FgYellow)
+	red := color.New(color.FgRed)
+	errColor := color.New(color.FgRed, color.Bold)
+
+	var report, errs []string
+
 	for _, file := range toCopy {
-		fmt.Printf("[INFO] Копирую %s...\n", file)
 		srcPath := filepath.Join(sourcePath, file)
 		dstPath := filepath.Join(destPath, file)
+		_ = bar.Add(1)
 		if err := CopyFile(srcPath, dstPath); err != nil {
-			fmt.Fprintf(os.Stderr, "[ERROR] copy file %q: %v\n", file, err)
+			errs = append(errs, fmt.Sprintf("[ERROR] copy file %q: %v", file, err))
 			continue
 		}
+		report = append(report, green.Sprintf("[КОПИРОВАНИЕ] %s", file))
 		copied++
 	}
 
 	for _, file := range toUpdate {
-		fmt.Printf("[INFO] Обновляю %s...\n", file)
 		srcPath := filepath.Join(sourcePath, file)
 		dstPath := filepath.Join(destPath, file)
+		_ = bar.Add(1)
 		if err := CopyFile(srcPath, dstPath); err != nil {
-			fmt.Fprintf(os.Stderr, "[ERROR] update file %q: %v\n", file, err)
+			errs = append(errs, fmt.Sprintf("[ERROR] update file %q: %v", file, err))
 			continue
 		}
+		report = append(report, yellow.Sprintf("[ОБНОВЛЕНИЕ] %s", file))
 		updated++
 	}
 
 	for _, file := range toDelete {
-		fmt.Printf("[INFO] Удаляю %s...\n", file)
 		path := filepath.Join(destPath, file)
+		_ = bar.Add(1)
 		if err := DeleteFile(path); err != nil {
-			fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+			errs = append(errs, fmt.Sprintf("[ERROR] %v", err))
 			continue
 		}
+		report = append(report, red.Sprintf("[УДАЛЕНИЕ] %s", file))
 		deleted++
+	}
+
+	for _, line := range report {
+		fmt.Println(line)
+	}
+	for _, line := range errs {
+		errColor.Fprintln(os.Stderr, line)
 	}
 
 	fmt.Println()
